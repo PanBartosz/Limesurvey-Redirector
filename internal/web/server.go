@@ -17,6 +17,7 @@ import (
 
 	"limesurvey_redirector/internal/auth"
 	"limesurvey_redirector/internal/config"
+	"limesurvey_redirector/internal/credentials"
 	"limesurvey_redirector/internal/limesurvey"
 	"limesurvey_redirector/internal/models"
 	"limesurvey_redirector/internal/routing"
@@ -28,12 +29,13 @@ type surveyService interface {
 }
 
 type Server struct {
-	cfg       config.Config
-	store     *store.Store
-	auth      *auth.Manager
-	csrf      *csrfProtector
-	lsService surveyService
-	tmpl      *template.Template
+	cfg             config.Config
+	store           *store.Store
+	auth            *auth.Manager
+	csrf            *csrfProtector
+	lsService       surveyService
+	instanceSecrets *credentials.Protector
+	tmpl            *template.Template
 }
 
 type viewData struct {
@@ -101,18 +103,19 @@ type routeFormTargetView struct {
 	Weight   string
 }
 
-func NewServer(cfg config.Config, st *store.Store, authManager *auth.Manager, lsService *limesurvey.Service) (*Server, error) {
+func NewServer(cfg config.Config, st *store.Store, authManager *auth.Manager, lsService *limesurvey.Service, instanceSecrets *credentials.Protector) (*Server, error) {
 	tmpl, err := template.ParseFS(assets, "templates/*.html")
 	if err != nil {
 		return nil, err
 	}
 	return &Server{
-		cfg:       cfg,
-		store:     st,
-		auth:      authManager,
-		csrf:      newCSRFProtector(cfg.SessionSecret, cfg.SecureCookies),
-		lsService: lsService,
-		tmpl:      tmpl,
+		cfg:             cfg,
+		store:           st,
+		auth:            authManager,
+		csrf:            newCSRFProtector(cfg.SessionSecret, cfg.SecureCookies),
+		lsService:       lsService,
+		instanceSecrets: instanceSecrets,
+		tmpl:            tmpl,
 	}, nil
 }
 
@@ -291,14 +294,25 @@ func (s *Server) instances(w http.ResponseWriter, r *http.Request) {
 			RemoteControlURL: strings.TrimSpace(r.FormValue("remotecontrol_url")),
 			RPCTransport:     models.RPCTransport(strings.TrimSpace(r.FormValue("rpc_transport"))),
 			Username:         strings.TrimSpace(r.FormValue("username")),
-			SecretRef:        strings.TrimSpace(r.FormValue("secret_ref")),
 			Enabled:          r.FormValue("enabled") == "on",
 		}
+		password := r.FormValue("password")
 		if err := s.validateInstanceInput(input); err != nil {
 			instances, _ := s.store.ListInstances(ctx)
 			s.render(w, r, http.StatusBadRequest, "instances.html", viewData{Title: "Instances", Path: r.URL.Path, Instances: instances, Error: err.Error()})
 			return
 		}
+		if err := validateInstancePassword(password); err != nil {
+			instances, _ := s.store.ListInstances(ctx)
+			s.render(w, r, http.StatusBadRequest, "instances.html", viewData{Title: "Instances", Path: r.URL.Path, Instances: instances, Error: err.Error()})
+			return
+		}
+		encryptedPassword, err := s.instanceSecrets.Encrypt(password)
+		if err != nil {
+			writeInternalServerError(w, err)
+			return
+		}
+		input.EncryptedPassword = encryptedPassword
 		if _, err := s.store.CreateInstance(ctx, input); err != nil {
 			instances, _ := s.store.ListInstances(ctx)
 			s.render(w, r, http.StatusBadRequest, "instances.html", viewData{Title: "Instances", Path: r.URL.Path, Instances: instances, Error: friendlyStoreError(err)})
@@ -904,9 +918,6 @@ func (s *Server) validateInstanceInput(input store.CreateInstanceInput) error {
 	}
 	if strings.TrimSpace(input.Username) == "" || len(strings.TrimSpace(input.Username)) > 128 {
 		return fmt.Errorf("instance username is required")
-	}
-	if err := validateSecretRef(input.SecretRef); err != nil {
-		return err
 	}
 	return nil
 }

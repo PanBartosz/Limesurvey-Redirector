@@ -376,7 +376,7 @@ Suggested initial schema:
 - `rpc_url`
 - `rpc_transport`
 - `username`
-- `secret_ref`
+- `encrypted_password`
 - `enabled`
 - `timeout_ms`
 - `created_at`

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -12,15 +11,17 @@ import (
 
 	xmlrpc "alexejk.io/go-xmlrpc"
 
+	"limesurvey_redirector/internal/credentials"
 	"limesurvey_redirector/internal/models"
 	"limesurvey_redirector/internal/routing"
 )
 
 type Service struct {
-	statsTTL       time.Duration
-	requestTimeout time.Duration
-	mu             sync.Mutex
-	cache          map[string]cachedState
+	statsTTL        time.Duration
+	requestTimeout  time.Duration
+	instanceSecrets *credentials.Protector
+	mu              sync.Mutex
+	cache           map[string]cachedState
 }
 
 type Summary struct {
@@ -45,11 +46,12 @@ type cachedState struct {
 	fetched time.Time
 }
 
-func NewService(statsTTL, requestTimeout time.Duration) *Service {
+func NewService(statsTTL, requestTimeout time.Duration, instanceSecrets *credentials.Protector) *Service {
 	return &Service{
-		statsTTL:       statsTTL,
-		requestTimeout: requestTimeout,
-		cache:          map[string]cachedState{},
+		statsTTL:        statsTTL,
+		requestTimeout:  requestTimeout,
+		instanceSecrets: instanceSecrets,
+		cache:           map[string]cachedState{},
 	}
 }
 
@@ -147,9 +149,9 @@ type client interface {
 }
 
 func (s *Service) newClient(instance models.Instance) (client, error) {
-	password := os.Getenv(instance.SecretRef)
-	if password == "" {
-		return nil, fmt.Errorf("missing environment secret for %s", instance.SecretRef)
+	password, err := s.resolvePassword(instance)
+	if err != nil {
+		return nil, err
 	}
 
 	switch instance.RPCTransport {
@@ -169,6 +171,20 @@ func (s *Service) newClient(instance models.Instance) (client, error) {
 	default:
 		return nil, fmt.Errorf("unsupported transport %q", instance.RPCTransport)
 	}
+}
+
+func (s *Service) resolvePassword(instance models.Instance) (string, error) {
+	if strings.TrimSpace(instance.EncryptedPassword) != "" {
+		password, err := s.instanceSecrets.Decrypt(instance.EncryptedPassword)
+		if err != nil {
+			return "", fmt.Errorf("decrypt stored credentials for instance %q: %w", instance.Name, err)
+		}
+		if password == "" {
+			return "", fmt.Errorf("stored credentials for instance %q are empty", instance.Name)
+		}
+		return password, nil
+	}
+	return "", fmt.Errorf("instance %q has no stored credentials", instance.Name)
 }
 
 type xmlClient struct {

@@ -8,8 +8,22 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"limesurvey_redirector/internal/credentials"
 	"limesurvey_redirector/internal/models"
 )
+
+func encryptTestPassword(t *testing.T, password string) string {
+	t.Helper()
+	protector, err := credentials.NewProtector("01234567890123456789012345678901")
+	if err != nil {
+		t.Fatalf("NewProtector failed: %v", err)
+	}
+	encrypted, err := protector.Encrypt(password)
+	if err != nil {
+		t.Fatalf("Encrypt failed: %v", err)
+	}
+	return encrypted
+}
 
 func openTestStore(t *testing.T) *Store {
 	t.Helper()
@@ -114,6 +128,28 @@ func TestMigrateAddsRouteOwnershipColumns(t *testing.T) {
 	if !columns["owner_username"] || !columns["owner_role"] {
 		t.Fatalf("expected ownership columns, got %+v", columns)
 	}
+
+	rows, err = st.db.Query(`PRAGMA table_info(instances)`)
+	if err != nil {
+		t.Fatalf("PRAGMA table_info(instances) failed: %v", err)
+	}
+	defer rows.Close()
+	instanceColumns := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name string
+		var typ string
+		var notNull int
+		var defaultVal sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultVal, &pk); err != nil {
+			t.Fatalf("scan instances table_info failed: %v", err)
+		}
+		instanceColumns[name] = true
+	}
+	if !instanceColumns["encrypted_password"] {
+		t.Fatalf("expected encrypted_password column, got %+v", instanceColumns)
+	}
 }
 
 func TestMigrateAddsUserSessionVersionColumn(t *testing.T) {
@@ -153,13 +189,13 @@ func TestListRoutesByOwner(t *testing.T) {
 		t.Fatalf("Migrate failed: %v", err)
 	}
 	instanceID, err := st.CreateInstance(ctx, CreateInstanceInput{
-		Name:             "LS6",
-		SurveyBaseURL:    "http://127.0.0.1:19080/surveys",
-		RemoteControlURL: "http://mock-ls:19080/jsonrpc",
-		RPCTransport:     models.RPCTransportJSON,
-		Username:         "api",
-		SecretRef:        "LS6_RPC_PASSWORD",
-		Enabled:          true,
+		Name:              "LS6",
+		SurveyBaseURL:     "http://127.0.0.1:19080/surveys",
+		RemoteControlURL:  "http://mock-ls:19080/jsonrpc",
+		RPCTransport:      models.RPCTransportJSON,
+		Username:          "api",
+		EncryptedPassword: encryptTestPassword(t, "mock-password"),
+		Enabled:           true,
 	})
 	if err != nil {
 		t.Fatalf("CreateInstance failed: %v", err)
@@ -209,13 +245,13 @@ func TestCreateRouteStoresTargetWeights(t *testing.T) {
 		t.Fatalf("Migrate failed: %v", err)
 	}
 	instanceID, err := st.CreateInstance(ctx, CreateInstanceInput{
-		Name:             "Weighted LS",
-		SurveyBaseURL:    "http://127.0.0.1:19080/surveys",
-		RemoteControlURL: "http://mock-ls:19080/jsonrpc",
-		RPCTransport:     models.RPCTransportJSON,
-		Username:         "api",
-		SecretRef:        "LS6_RPC_PASSWORD",
-		Enabled:          true,
+		Name:              "Weighted LS",
+		SurveyBaseURL:     "http://127.0.0.1:19080/surveys",
+		RemoteControlURL:  "http://mock-ls:19080/jsonrpc",
+		RPCTransport:      models.RPCTransportJSON,
+		Username:          "api",
+		EncryptedPassword: encryptTestPassword(t, "mock-password"),
+		Enabled:           true,
 	})
 	if err != nil {
 		t.Fatalf("CreateInstance failed: %v", err)

@@ -10,6 +10,7 @@ import (
 
 	"limesurvey_redirector/internal/auth"
 	"limesurvey_redirector/internal/config"
+	"limesurvey_redirector/internal/credentials"
 	"limesurvey_redirector/internal/limesurvey"
 	"limesurvey_redirector/internal/store"
 	"limesurvey_redirector/internal/web"
@@ -32,9 +33,13 @@ func main() {
 		log.Fatal(err)
 	}
 
+	instanceSecrets, err := credentials.NewProtector(cfg.InstanceCredentialsKey)
+	if err != nil {
+		log.Fatal(err)
+	}
 	authManager := auth.New(cfg.AdminUsername, cfg.AdminPassword, cfg.SessionSecret, cfg.SecureCookies)
-	lsService := limesurvey.NewService(cfg.StatsTTL, cfg.RequestTimeout)
-	server, err := web.NewServer(cfg, st, authManager, lsService)
+	lsService := limesurvey.NewService(cfg.StatsTTL, cfg.RequestTimeout, instanceSecrets)
+	server, err := web.NewServer(cfg, st, authManager, lsService, instanceSecrets)
 	if err != nil {
 		log.Fatal(err)
 	}

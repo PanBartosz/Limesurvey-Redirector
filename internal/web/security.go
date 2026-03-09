@@ -26,7 +26,6 @@ const (
 var (
 	usernamePattern   = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9._-]{1,62}[a-z0-9])?$`)
 	slugPattern       = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
-	envNamePattern    = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,127}$`)
 	queryKeyPattern   = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$`)
 	allowedSchemes    = map[string]struct{}{"http": {}, "https": {}}
 	allowedTransports = map[models.RPCTransport]struct{}{
@@ -228,17 +227,20 @@ func validateUserPassword(password string) error {
 	return nil
 }
 
-func validateSlug(slug string) error {
-	slug = strings.TrimSpace(slug)
-	if len(slug) < 3 || len(slug) > 64 || !slugPattern.MatchString(slug) {
-		return fmt.Errorf("slug must use lowercase letters, numbers, and dashes only")
+func validateInstancePassword(password string) error {
+	if password == "" {
+		return fmt.Errorf("instance API password is required")
+	}
+	if len(password) > 512 {
+		return fmt.Errorf("instance API password must be at most 512 characters")
 	}
 	return nil
 }
 
-func validateSecretRef(secretRef string) error {
-	if !envNamePattern.MatchString(strings.TrimSpace(secretRef)) {
-		return fmt.Errorf("secret env name must use uppercase letters, numbers, and underscores")
+func validateSlug(slug string) error {
+	slug = strings.TrimSpace(slug)
+	if len(slug) < 3 || len(slug) > 64 || !slugPattern.MatchString(slug) {
+		return fmt.Errorf("slug must use lowercase letters, numbers, and dashes only")
 	}
 	return nil
 }

@@ -9,29 +9,32 @@ import (
 )
 
 type Config struct {
-	Addr           string
-	DatabasePath   string
-	AdminUsername  string
-	AdminPassword  string
-	SessionSecret  string
-	SecureCookies  bool
-	PublicBaseURL  string
-	StatsTTL       time.Duration
-	RequestTimeout time.Duration
+	Addr                   string
+	DatabasePath           string
+	AdminUsername          string
+	AdminPassword          string
+	SessionSecret          string
+	InstanceCredentialsKey string
+	SecureCookies          bool
+	PublicBaseURL          string
+	StatsTTL               time.Duration
+	RequestTimeout         time.Duration
 }
 
 func Load() (Config, error) {
 	publicBaseURL := os.Getenv("PUBLIC_BASE_URL")
+	sessionSecret := envOrDefault("SESSION_SECRET", "change-me")
 	cfg := Config{
-		Addr:           envOrDefault("APP_ADDR", ":8099"),
-		DatabasePath:   envOrDefault("DATABASE_PATH", "./data/redirector.db"),
-		AdminUsername:  envOrDefault("ADMIN_USERNAME", "admin"),
-		AdminPassword:  os.Getenv("ADMIN_PASSWORD"),
-		SessionSecret:  envOrDefault("SESSION_SECRET", "change-me"),
-		SecureCookies:  envBoolOrDefault("SESSION_SECURE_COOKIE", strings.HasPrefix(strings.ToLower(publicBaseURL), "https://")),
-		PublicBaseURL:  publicBaseURL,
-		StatsTTL:       time.Duration(envIntOrDefault("STATS_TTL_SECONDS", 10)) * time.Second,
-		RequestTimeout: time.Duration(envIntOrDefault("REQUEST_TIMEOUT_SECONDS", 15)) * time.Second,
+		Addr:                   envOrDefault("APP_ADDR", ":8099"),
+		DatabasePath:           envOrDefault("DATABASE_PATH", "./data/redirector.db"),
+		AdminUsername:          envOrDefault("ADMIN_USERNAME", "admin"),
+		AdminPassword:          os.Getenv("ADMIN_PASSWORD"),
+		SessionSecret:          sessionSecret,
+		InstanceCredentialsKey: envOrDefault("INSTANCE_CREDENTIALS_KEY", sessionSecret),
+		SecureCookies:          envBoolOrDefault("SESSION_SECURE_COOKIE", strings.HasPrefix(strings.ToLower(publicBaseURL), "https://")),
+		PublicBaseURL:          publicBaseURL,
+		StatsTTL:               time.Duration(envIntOrDefault("STATS_TTL_SECONDS", 10)) * time.Second,
+		RequestTimeout:         time.Duration(envIntOrDefault("REQUEST_TIMEOUT_SECONDS", 15)) * time.Second,
 	}
 
 	if cfg.AdminPassword == "" {
@@ -42,6 +45,9 @@ func Load() (Config, error) {
 	}
 	if len(cfg.SessionSecret) < 32 {
 		return Config{}, fmt.Errorf("SESSION_SECRET must be at least 32 characters")
+	}
+	if len(cfg.InstanceCredentialsKey) < 32 {
+		return Config{}, fmt.Errorf("INSTANCE_CREDENTIALS_KEY must be at least 32 characters")
 	}
 
 	return cfg, nil

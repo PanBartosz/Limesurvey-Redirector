@@ -3,7 +3,9 @@ package limesurvey
 import (
 	"strings"
 	"testing"
+	"time"
 
+	"limesurvey_redirector/internal/credentials"
 	"limesurvey_redirector/internal/models"
 	"limesurvey_redirector/internal/routing"
 )
@@ -18,7 +20,6 @@ func TestSnapshotJSONRedactsSensitiveInstanceFields(t *testing.T) {
 				Name:             "LS6",
 				RemoteControlURL: "http://internal.example/admin/remotecontrol",
 				Username:         "api-user",
-				SecretRef:        "LS6_RPC_PASSWORD",
 			},
 		},
 		CompletedResponses:  7,
@@ -27,7 +28,7 @@ func TestSnapshotJSONRedactsSensitiveInstanceFields(t *testing.T) {
 		SurveyActive:        true,
 	}})
 
-	for _, forbidden := range []string{"LS6_RPC_PASSWORD", "api-user", "remotecontrol"} {
+	for _, forbidden := range []string{"encrypted_password", "api-user", "remotecontrol"} {
 		if strings.Contains(payload, forbidden) {
 			t.Fatalf("snapshot leaked sensitive field %q: %s", forbidden, payload)
 		}
@@ -36,5 +37,36 @@ func TestSnapshotJSONRedactsSensitiveInstanceFields(t *testing.T) {
 		if !strings.Contains(payload, expected) {
 			t.Fatalf("snapshot missing expected field %q: %s", expected, payload)
 		}
+	}
+}
+
+func TestResolvePasswordDecryptsStoredCredentials(t *testing.T) {
+	protector, err := credentials.NewProtector("01234567890123456789012345678901")
+	if err != nil {
+		t.Fatalf("NewProtector failed: %v", err)
+	}
+	encrypted, err := protector.Encrypt("rpc-password")
+	if err != nil {
+		t.Fatalf("Encrypt failed: %v", err)
+	}
+	service := NewService(time.Second, time.Second, protector)
+	password, err := service.resolvePassword(models.Instance{Name: "LS6", EncryptedPassword: encrypted})
+	if err != nil {
+		t.Fatalf("resolvePassword failed: %v", err)
+	}
+	if password != "rpc-password" {
+		t.Fatalf("unexpected password %q", password)
+	}
+}
+
+func TestResolvePasswordRejectsMissingStoredCredentials(t *testing.T) {
+	protector, err := credentials.NewProtector("01234567890123456789012345678901")
+	if err != nil {
+		t.Fatalf("NewProtector failed: %v", err)
+	}
+	service := NewService(time.Second, time.Second, protector)
+	_, err = service.resolvePassword(models.Instance{Name: "LS6"})
+	if err == nil {
+		t.Fatal("expected missing stored credentials to fail")
 	}
 }

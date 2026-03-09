@@ -17,7 +17,7 @@
 5. `alice` can log in and create a weighted route using the configured instance and the dynamic survey-row builder.
 6. `alice` can edit the route name, slug, algorithm, fuzzy threshold, and target weights from the route detail page.
 7. `alice` cannot access `/admin/instances` or `/admin/users`.
-8. The simulation JSON for the route is accessible to the owner but does not contain sensitive instance fields such as `secret_ref`, `username`, or `remotecontrol_url`.
+8. The simulation JSON for the route is accessible to the owner but does not contain sensitive instance fields such as `encrypted_password`, `username`, or `remotecontrol_url`.
 9. `bob` cannot see `alice`'s route in the routes list.
 10. `bob` gets `403` for `alice`'s route detail URL when the route ID is known.
 11. Public redirect `/r/alpha-route-updated?token=abc123&src=mail` resolves to the mock survey with the weighted algorithm and preserves the query parameters.

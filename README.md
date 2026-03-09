@@ -50,14 +50,13 @@ Common optional settings:
 - `APP_ADDR` default `:8099`
 - `DATABASE_PATH` default `./data/redirector.db`
 - `IMAGE_TAG` default `latest`
+- `INSTANCE_CREDENTIALS_KEY` encryption key for stored LimeSurvey instance passwords; if unset, the app falls back to `SESSION_SECRET`
 - `SESSION_SECURE_COOKIE` default `false`, set `true` behind HTTPS
 - `PUBLIC_BASE_URL` public URL of the app, used to display full route URLs
 - `STATS_TTL_SECONDS` default `10`
 - `REQUEST_TIMEOUT_SECONDS` default `15`
 - `HOST_BIND` default `127.0.0.1`
 - `HOST_PORT` default `18099`
-- `LS3_RPC_PASSWORD` optional secret for LS3 instance config
-- `LS6_RPC_PASSWORD` optional secret for LS6 instance config
 
 ## Local Run
 
@@ -104,6 +103,7 @@ You need at least:
 - `ADMIN_USERNAME`
 - `ADMIN_PASSWORD`
 - `SESSION_SECRET`
+- `INSTANCE_CREDENTIALS_KEY`
 
 Recommended production values:
 
@@ -114,9 +114,7 @@ Recommended production values:
 - `PUBLIC_BASE_URL=https://your-domain.example`
 
 Optional instance secrets:
-
-- `LS3_RPC_PASSWORD`
-- `LS6_RPC_PASSWORD`
+- none; LimeSurvey instance passwords are entered in the admin UI and stored encrypted in the app database
 
 ### 2. Create the stack in Portainer
 
@@ -159,7 +157,8 @@ When you add an instance in the admin UI:
 
 - choose `xmlrpc` for LimeSurvey 3
 - choose `jsonrpc` for LimeSurvey 6
-- use `LS3_RPC_PASSWORD` or `LS6_RPC_PASSWORD` as the secret env name if you want passwords stored only in Portainer stack variables
+- enter the LimeSurvey API username and password directly in the form
+- the password is encrypted before it is written to SQLite
 
 ### 6. Updating the stack
 

@@ -17,6 +17,7 @@ import (
 
 	"limesurvey_redirector/internal/auth"
 	"limesurvey_redirector/internal/config"
+	"limesurvey_redirector/internal/credentials"
 	"limesurvey_redirector/internal/models"
 	"limesurvey_redirector/internal/routing"
 	"limesurvey_redirector/internal/store"
@@ -32,11 +33,12 @@ func (s *stubSurveyService) BuildCandidates(ctx context.Context, route models.Ro
 }
 
 type testEnv struct {
-	cfg    config.Config
-	store  *store.Store
-	server *Server
-	ts     *httptest.Server
-	stub   *stubSurveyService
+	cfg       config.Config
+	store     *store.Store
+	server    *Server
+	ts        *httptest.Server
+	stub      *stubSurveyService
+	protector *credentials.Protector
 }
 
 func newTestEnv(t *testing.T) *testEnv {
@@ -52,12 +54,17 @@ func newTestEnv(t *testing.T) *testEnv {
 	t.Cleanup(func() { _ = st.Close() })
 
 	cfg := config.Config{
-		AdminUsername:  "admin",
-		AdminPassword:  "AdminPass123!",
-		SessionSecret:  "01234567890123456789012345678901",
-		PublicBaseURL:  "http://127.0.0.1:18099",
-		RequestTimeout: time.Second,
-		StatsTTL:       time.Second,
+		AdminUsername:          "admin",
+		AdminPassword:          "AdminPass123!",
+		SessionSecret:          "01234567890123456789012345678901",
+		InstanceCredentialsKey: "abcdefghijklmnopqrstuvwxyz012345",
+		PublicBaseURL:          "http://127.0.0.1:18099",
+		RequestTimeout:         time.Second,
+		StatsTTL:               time.Second,
+	}
+	protector, err := credentials.NewProtector(cfg.InstanceCredentialsKey)
+	if err != nil {
+		t.Fatalf("NewProtector failed: %v", err)
 	}
 	tmpl, err := template.ParseFS(assets, "templates/*.html")
 	if err != nil {
@@ -65,16 +72,17 @@ func newTestEnv(t *testing.T) *testEnv {
 	}
 	stub := &stubSurveyService{}
 	srv := &Server{
-		cfg:       cfg,
-		store:     st,
-		auth:      auth.New(cfg.AdminUsername, cfg.AdminPassword, cfg.SessionSecret, false),
-		csrf:      newCSRFProtector(cfg.SessionSecret, false),
-		lsService: stub,
-		tmpl:      tmpl,
+		cfg:             cfg,
+		store:           st,
+		auth:            auth.New(cfg.AdminUsername, cfg.AdminPassword, cfg.SessionSecret, false),
+		csrf:            newCSRFProtector(cfg.SessionSecret, false),
+		lsService:       stub,
+		instanceSecrets: protector,
+		tmpl:            tmpl,
 	}
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
-	return &testEnv{cfg: cfg, store: st, server: srv, ts: ts, stub: stub}
+	return &testEnv{cfg: cfg, store: st, server: srv, ts: ts, stub: stub, protector: protector}
 }
 
 func newClient(t *testing.T) *http.Client {
@@ -88,14 +96,18 @@ func newClient(t *testing.T) *http.Client {
 
 func seedInstance(t *testing.T, env *testEnv, name string) int64 {
 	t.Helper()
+	encryptedPassword, err := env.protector.Encrypt("mock-password")
+	if err != nil {
+		t.Fatalf("Encrypt failed: %v", err)
+	}
 	id, err := env.store.CreateInstance(context.Background(), store.CreateInstanceInput{
-		Name:             name,
-		SurveyBaseURL:    "http://survey.example.test/surveys",
-		RemoteControlURL: "http://mock-ls:19080/jsonrpc",
-		RPCTransport:     models.RPCTransportJSON,
-		Username:         "api-user",
-		SecretRef:        "LS6_RPC_PASSWORD",
-		Enabled:          true,
+		Name:              name,
+		SurveyBaseURL:     "http://survey.example.test/surveys",
+		RemoteControlURL:  "http://mock-ls:19080/jsonrpc",
+		RPCTransport:      models.RPCTransportJSON,
+		Username:          "api-user",
+		EncryptedPassword: encryptedPassword,
+		Enabled:           true,
 	})
 	if err != nil {
 		t.Fatalf("CreateInstance failed: %v", err)
@@ -365,7 +377,6 @@ func TestSimulationResponseRedactsSensitiveFields(t *testing.T) {
 		RPCTransport:     models.RPCTransportJSON,
 		RemoteControlURL: "http://internal.example/admin/remotecontrol",
 		Username:         "api-user",
-		SecretRef:        "LS6_RPC_PASSWORD",
 		Enabled:          true,
 	}
 	env.stub.candidates = []routing.Candidate{{
@@ -385,7 +396,7 @@ func TestSimulationResponseRedactsSensitiveFields(t *testing.T) {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	payload := string(body)
-	for _, forbidden := range []string{"LS6_RPC_PASSWORD", "api-user", "remotecontrol"} {
+	for _, forbidden := range []string{"encrypted_password", "api-user", "remotecontrol"} {
 		if strings.Contains(payload, forbidden) {
 			t.Fatalf("simulation leaked %q: %s", forbidden, payload)
 		}
@@ -404,7 +415,6 @@ func TestRedirectDecisionRedactsQueriesAndCandidateSnapshot(t *testing.T) {
 	target.Instance.SurveyBaseURL = env.ts.URL + "/surveys"
 	target.Instance.RemoteControlURL = "http://internal.example/admin/remotecontrol"
 	target.Instance.Username = "api-user"
-	target.Instance.SecretRef = "LS6_RPC_PASSWORD"
 	env.stub.candidates = []routing.Candidate{{
 		Target:             target,
 		CompletedResponses: 1,
@@ -436,7 +446,7 @@ func TestRedirectDecisionRedactsQueriesAndCandidateSnapshot(t *testing.T) {
 	if strings.Contains(decision.RequestQuery, "abc123") || strings.Contains(decision.ForwardedQuery, "abc123") {
 		t.Fatalf("query values were not redacted: %+v", decision)
 	}
-	for _, forbidden := range []string{"LS6_RPC_PASSWORD", "api-user", "remotecontrol"} {
+	for _, forbidden := range []string{"encrypted_password", "api-user", "remotecontrol"} {
 		if strings.Contains(decision.CandidateSnapshot, forbidden) {
 			t.Fatalf("candidate snapshot leaked %q: %s", forbidden, decision.CandidateSnapshot)
 		}

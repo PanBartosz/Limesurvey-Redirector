@@ -19,13 +19,13 @@ type Store struct {
 }
 
 type CreateInstanceInput struct {
-	Name             string
-	SurveyBaseURL    string
-	RemoteControlURL string
-	RPCTransport     models.RPCTransport
-	Username         string
-	SecretRef        string
-	Enabled          bool
+	Name              string
+	SurveyBaseURL     string
+	RemoteControlURL  string
+	RPCTransport      models.RPCTransport
+	Username          string
+	EncryptedPassword string
+	Enabled           bool
 }
 
 type CreateRouteInput struct {
@@ -104,7 +104,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 			remotecontrol_url TEXT NOT NULL,
 			rpc_transport TEXT NOT NULL,
 			username TEXT NOT NULL,
-			secret_ref TEXT NOT NULL,
+			encrypted_password TEXT NOT NULL DEFAULT '',
 			enabled INTEGER NOT NULL DEFAULT 1,
 			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -208,6 +208,9 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := s.ensureColumnExists(ctx, "users", "session_version", "INTEGER NOT NULL DEFAULT 1"); err != nil {
 		return err
 	}
+	if err := s.ensureColumnExists(ctx, "instances", "encrypted_password", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -218,7 +221,7 @@ func (s *Store) Ping(ctx context.Context) error {
 
 func (s *Store) ListInstances(ctx context.Context) ([]models.Instance, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, name, survey_base_url, remotecontrol_url, rpc_transport, username, secret_ref, enabled, created_at, updated_at
+		SELECT id, name, survey_base_url, remotecontrol_url, rpc_transport, username, encrypted_password, enabled, created_at, updated_at
 		FROM instances
 		ORDER BY name ASC`)
 	if err != nil {
@@ -239,7 +242,7 @@ func (s *Store) ListInstances(ctx context.Context) ([]models.Instance, error) {
 
 func (s *Store) ListEnabledInstances(ctx context.Context) ([]models.Instance, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, name, survey_base_url, remotecontrol_url, rpc_transport, username, secret_ref, enabled, created_at, updated_at
+		SELECT id, name, survey_base_url, remotecontrol_url, rpc_transport, username, encrypted_password, enabled, created_at, updated_at
 		FROM instances
 		WHERE enabled = 1
 		ORDER BY name ASC`)
@@ -261,21 +264,21 @@ func (s *Store) ListEnabledInstances(ctx context.Context) ([]models.Instance, er
 
 func (s *Store) GetInstance(ctx context.Context, id int64) (models.Instance, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, name, survey_base_url, remotecontrol_url, rpc_transport, username, secret_ref, enabled, created_at, updated_at
+		SELECT id, name, survey_base_url, remotecontrol_url, rpc_transport, username, encrypted_password, enabled, created_at, updated_at
 		FROM instances WHERE id = ?`, id)
 	return scanInstance(row)
 }
 
 func (s *Store) CreateInstance(ctx context.Context, input CreateInstanceInput) (int64, error) {
 	result, err := s.db.ExecContext(ctx, `
-		INSERT INTO instances (name, survey_base_url, remotecontrol_url, rpc_transport, username, secret_ref, enabled)
+		INSERT INTO instances (name, survey_base_url, remotecontrol_url, rpc_transport, username, encrypted_password, enabled)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		strings.TrimSpace(input.Name),
 		strings.TrimSpace(input.SurveyBaseURL),
 		strings.TrimSpace(input.RemoteControlURL),
 		string(input.RPCTransport),
 		strings.TrimSpace(input.Username),
-		strings.TrimSpace(input.SecretRef),
+		strings.TrimSpace(input.EncryptedPassword),
 		boolToInt(input.Enabled),
 	)
 	if err != nil {
@@ -682,7 +685,7 @@ func (s *Store) listRouteTargets(ctx context.Context, routeID int64) ([]models.R
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
 			rt.id, rt.route_id, rt.instance_id, rt.survey_id, rt.display_name, rt.weight, rt.hard_cap, rt.priority, rt.enabled, rt.created_at, rt.updated_at,
-			i.id, i.name, i.survey_base_url, i.remotecontrol_url, i.rpc_transport, i.username, i.secret_ref, i.enabled, i.created_at, i.updated_at,
+			i.id, i.name, i.survey_base_url, i.remotecontrol_url, i.rpc_transport, i.username, i.encrypted_password, i.enabled, i.created_at, i.updated_at,
 			ts.completed_responses, ts.incomplete_responses, ts.full_responses, ts.survey_active, ts.fetch_error, ts.fetched_at
 		FROM route_targets rt
 		JOIN instances i ON i.id = rt.instance_id
@@ -711,7 +714,7 @@ func (s *Store) listRouteTargets(ctx context.Context, routeID int64) ([]models.R
 
 		if err := rows.Scan(
 			&target.ID, &target.RouteID, &target.InstanceID, &target.SurveyID, &target.DisplayName, &target.Weight, &hardCap, &target.Priority, &targetEnabled, &targetCreatedAt, &targetUpdatedAt,
-			&target.Instance.ID, &target.Instance.Name, &target.Instance.SurveyBaseURL, &target.Instance.RemoteControlURL, &target.Instance.RPCTransport, &target.Instance.Username, &target.Instance.SecretRef, &instanceEnabled, &instanceCreatedAt, &instanceUpdatedAt,
+			&target.Instance.ID, &target.Instance.Name, &target.Instance.SurveyBaseURL, &target.Instance.RemoteControlURL, &target.Instance.RPCTransport, &target.Instance.Username, &target.Instance.EncryptedPassword, &instanceEnabled, &instanceCreatedAt, &instanceUpdatedAt,
 			&completed, &incomplete, &full, &surveyActive, &fetchError, &fetchedAt,
 		); err != nil {
 			return nil, err
@@ -720,6 +723,7 @@ func (s *Store) listRouteTargets(ctx context.Context, routeID int64) ([]models.R
 		target.Enabled = targetEnabled == 1
 		target.CreatedAt = parseDBTime(targetCreatedAt)
 		target.UpdatedAt = parseDBTime(targetUpdatedAt)
+		target.Instance.CredentialConfigured = strings.TrimSpace(target.Instance.EncryptedPassword) != ""
 		target.Instance.Enabled = instanceEnabled == 1
 		target.Instance.CreatedAt = parseDBTime(instanceCreatedAt)
 		target.Instance.UpdatedAt = parseDBTime(instanceUpdatedAt)
@@ -824,9 +828,10 @@ func scanInstance(scanner interface{ Scan(dest ...any) error }) (models.Instance
 	var item models.Instance
 	var enabled int
 	var createdAt, updatedAt string
-	if err := scanner.Scan(&item.ID, &item.Name, &item.SurveyBaseURL, &item.RemoteControlURL, &item.RPCTransport, &item.Username, &item.SecretRef, &enabled, &createdAt, &updatedAt); err != nil {
+	if err := scanner.Scan(&item.ID, &item.Name, &item.SurveyBaseURL, &item.RemoteControlURL, &item.RPCTransport, &item.Username, &item.EncryptedPassword, &enabled, &createdAt, &updatedAt); err != nil {
 		return models.Instance{}, err
 	}
+	item.CredentialConfigured = strings.TrimSpace(item.EncryptedPassword) != ""
 	item.Enabled = enabled == 1
 	item.CreatedAt = parseDBTime(createdAt)
 	item.UpdatedAt = parseDBTime(updatedAt)

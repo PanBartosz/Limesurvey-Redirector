@@ -25,16 +25,17 @@ const (
 )
 
 type Instance struct {
-	ID               int64
-	Name             string
-	SurveyBaseURL    string
-	RemoteControlURL string
-	RPCTransport     RPCTransport
-	Username         string
-	SecretRef        string
-	Enabled          bool
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID                   int64
+	Name                 string
+	SurveyBaseURL        string
+	RemoteControlURL     string
+	RPCTransport         RPCTransport
+	Username             string
+	EncryptedPassword    string
+	CredentialConfigured bool
+	Enabled              bool
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 type Route struct {

@@ -56,7 +56,7 @@ async function main() {
     await adminPage.getByLabel('RemoteControl URL').fill('http://mock-ls:19080/jsonrpc');
     await adminPage.getByLabel('RPC Transport').selectOption('jsonrpc');
     await adminPage.getByLabel('Username').fill('api-user');
-    await adminPage.getByLabel('Secret Env Name').fill('LS6_RPC_PASSWORD');
+    await adminPage.getByLabel('API Password').fill('mock-password');
     await adminPage.getByRole('button', { name: 'Create Instance' }).click();
     await adminPage.waitForURL(`${baseURL}/admin/instances`, { waitUntil: 'networkidle' });
     assert(await adminPage.locator('body').textContent().then(t => t.includes('Mock LS')), 'expected instance to be listed');
@@ -92,7 +92,7 @@ async function main() {
     const simResponse = await simPage.goto(`${baseURL}/api/routes/${routeID}/simulate`, { waitUntil: 'networkidle' });
     assert(simResponse && simResponse.status() === 200, `expected simulation 200, got ${simResponse ? simResponse.status() : 'no response'}`);
     const simBody = await simPage.locator('body').textContent();
-    for (const forbidden of ['secret_ref', 'remotecontrol', 'LS6_RPC_PASSWORD', 'api-user']) {
+    for (const forbidden of ['secret_ref', 'encrypted_password', 'remotecontrol', 'api-user']) {
       assert(!simBody.includes(forbidden), `simulation response leaked ${forbidden}`);
     }
     await simPage.close();

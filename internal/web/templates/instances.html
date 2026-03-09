@@ -34,7 +34,7 @@
         <div>
           <div class="page-kicker">Instances</div>
           <h2>LimeSurvey runtimes</h2>
-          <p>Survey base URL, RemoteControl endpoint, transport, username, and password env reference.</p>
+          <p>Survey base URL, RemoteControl endpoint, transport, username, and encrypted API password storage.</p>
         </div>
       </header>
       {{ if .Error }}<div class="notice error">{{ .Error }}</div>{{ end }}
@@ -49,7 +49,7 @@
           <div class="table-wrap">
             <table class="data-table">
               <thead>
-                <tr><th>Name</th><th>Survey Base</th><th>RemoteControl</th><th>Transport</th><th>User</th><th>Secret Ref</th><th>Status</th></tr>
+                <tr><th>Name</th><th>Survey Base</th><th>RemoteControl</th><th>Transport</th><th>User</th><th>Credentials</th><th>Status</th></tr>
               </thead>
               <tbody>
                 {{ range .Instances }}
@@ -59,7 +59,7 @@
                   <td><code>{{ .RemoteControlURL }}</code></td>
                   <td><span class="chip">{{ .RPCTransport }}</span></td>
                   <td><code>{{ .Username }}</code></td>
-                  <td><code>{{ .SecretRef }}</code></td>
+                  <td>{{ if .CredentialConfigured }}<span class="badge ok">stored</span>{{ else }}<span class="badge neutral">missing</span>{{ end }}</td>
                   <td>{{ if .Enabled }}<span class="badge ok">enabled</span>{{ else }}<span class="badge neutral">disabled</span>{{ end }}</td>
                 </tr>
                 {{ else }}
@@ -73,7 +73,7 @@
           <div class="panel-header tight">
             <div>
               <h3 class="panel-title">Create instance</h3>
-              <div class="panel-subtitle">Add a new LimeSurvey runtime definition.</div>
+              <div class="panel-subtitle">Add a new LimeSurvey runtime definition. Passwords are encrypted before they are stored.</div>
             </div>
           </div>
           <form method="post" class="form-grid">
@@ -116,8 +116,8 @@
                 </label>
               </div>
               <label class="field">
-                <span>Secret Env Name</span>
-                <input name="secret_ref" placeholder="LS6_RPC_PASSWORD" required>
+                <span>API Password</span>
+                <input type="password" name="password" required>
               </label>
               <label class="checkbox"><input type="checkbox" name="enabled" checked> Enable this instance immediately</label>
             </div>
