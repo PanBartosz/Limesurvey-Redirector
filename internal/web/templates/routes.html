@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }}</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+  <script defer src="/static/routes.js"></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand-block">
+        <div class="brand-mark">KR</div>
+        <div>
+          <div class="brand-kicker">LimeSurvey Redirector</div>
+          <h1>{{ if .IsAdmin }}Admin{{ else }}User{{ end }} Console</h1>
+        </div>
+      </div>
+      <nav>
+        <a href="/admin">Dashboard</a>
+        <a href="/admin/routes" class="active">Routes</a>
+        <a href="/admin/tutorial">Tutorial</a>
+        {{ if .IsAdmin }}<a href="/admin/instances">Instances</a>{{ end }}
+        {{ if .IsAdmin }}<a href="/admin/users">Users</a>{{ end }}
+        <form method="post" action="/admin/logout" class="nav-form">
+          <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+          <button type="submit" class="nav-button">Logout</button>
+        </form>
+      </nav>
+    </aside>
+    <main class="workspace">
+      <header class="pagebar">
+        <div>
+          <div class="page-kicker">Routes</div>
+          <h2>Public redirect rules</h2>
+          <p>Public slugs, target survey pools, and routing algorithms.</p>
+        </div>
+      </header>
+      {{ if .Error }}<div class="notice error">{{ .Error }}</div>{{ end }}
+      <section class="route-grid">
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <h3 class="panel-title">Configured routes</h3>
+              <div class="panel-subtitle">Public URLs, assigned surveys, instance mapping, and current status.</div>
+            </div>
+          </div>
+          {{ template "route_cards" . }}
+        </article>
+        <article class="panel">
+          <div class="panel-header tight">
+            <div>
+              <h3 class="panel-title">Create route</h3>
+              <div class="panel-subtitle">Build the target pool and expose only the options used by the selected algorithm.</div>
+            </div>
+            <a class="action-link" href="/admin/tutorial">Open tutorial</a>
+          </div>
+          {{ template "route_form" . }}
+        </article>
+      </section>
+      <section class="panel footer-gap">
+        <div class="panel-header">
+          <div>
+            <h3 class="panel-title">Algorithm registry</h3>
+            <div class="panel-subtitle">Available routing methods.</div>
+          </div>
+        </div>
+        <div class="algo-grid">
+          {{ range .Algorithms }}
+          <article class="algorithm-card">
+            <div class="panel-header tight">
+              <h3>{{ .Label }}</h3>
+              <span class="chip">{{ .ID }}</span>
+            </div>
+            <p>{{ .Description }}</p>
+            <div class="definition-note"><strong>Use when:</strong> {{ .UseCase }}</div>
+          </article>
+          {{ end }}
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

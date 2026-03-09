@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }}</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+  <script defer src="/static/routes.js"></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand-block">
+        <div class="brand-mark">KR</div>
+        <div>
+          <div class="brand-kicker">LimeSurvey Redirector</div>
+          <h1>{{ if .IsAdmin }}Admin{{ else }}User{{ end }} Console</h1>
+        </div>
+      </div>
+      <nav>
+        <a href="/admin" class="active">Dashboard</a>
+        <a href="/admin/routes">Routes</a>
+        <a href="/admin/tutorial">Tutorial</a>
+        {{ if .IsAdmin }}<a href="/admin/instances">Instances</a>{{ end }}
+        {{ if .IsAdmin }}<a href="/admin/users">Users</a>{{ end }}
+        <form method="post" action="/admin/logout" class="nav-form">
+          <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+          <button type="submit" class="nav-button">Logout</button>
+        </form>
+      </nav>
+    </aside>
+    <main class="workspace">
+      <header class="pagebar">
+        <div>
+          <div class="page-kicker">Dashboard</div>
+          <h2>Routes overview</h2>
+          <p>Configured public routes{{ if .IsAdmin }} and system instances{{ end }}.</p>
+        </div>
+      </header>
+      {{ if .Error }}<div class="notice error">{{ .Error }}</div>{{ end }}
+      <section class="summary-grid">
+        <article class="kpi">
+          <span class="kpi-label">Configured Routes</span>
+          <strong class="kpi-value">{{ len .Routes }}</strong>
+          <span class="kpi-meta">Public slugs available for redirect traffic</span>
+        </article>
+        <article class="kpi">
+          <span class="kpi-label">Available Instances</span>
+          <strong class="kpi-value">{{ len .Instances }}</strong>
+          <span class="kpi-meta">Instances selectable in the route form</span>
+        </article>
+      </section>
+      <section class="panel-grid">
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <h3 class="panel-title">Configured routes</h3>
+              <div class="panel-subtitle">Public URLs, routing mode, and assigned surveys.</div>
+            </div>
+            <a class="action-link" href="/admin/routes">Manage routes</a>
+          </div>
+          {{ template "route_cards" . }}
+        </article>
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <h3 class="panel-title">Available instances</h3>
+              <div class="panel-subtitle">Instances that can be used when creating routes.</div>
+            </div>
+            {{ if .IsAdmin }}<a class="action-link" href="/admin/instances">Manage instances</a>{{ end }}
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr><th>Name</th><th>Transport</th>{{ if .IsAdmin }}<th>User</th>{{ end }}<th>Status</th></tr>
+              </thead>
+              <tbody>
+                {{ range .Instances }}
+                <tr>
+                  <td><strong>{{ .Name }}</strong></td>
+                  <td><span class="chip">{{ .RPCTransport }}</span></td>
+                  {{ if $.IsAdmin }}<td><code>{{ .Username }}</code></td>{{ end }}
+                  <td>{{ if .Enabled }}<span class="badge ok">enabled</span>{{ else }}<span class="badge neutral">disabled</span>{{ end }}</td>
+                </tr>
+                {{ else }}
+                <tr><td colspan="{{ if .IsAdmin }}4{{ else }}3{{ end }}" class="empty-state">No instances configured yet.</td></tr>
+                {{ end }}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

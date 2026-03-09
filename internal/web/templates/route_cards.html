@@ -1,0 +1,55 @@
+{{ define "route_cards" }}
+<div class="route-card-list">
+  {{ range .RouteCards }}
+  <article class="route-card">
+    <div class="route-card-top">
+      <div>
+        <div class="inline-cluster">
+          <h3 class="route-card-title"><a class="primary-link" href="/admin/routes/{{ .ID }}">{{ .Name }}</a></h3>
+          <span class="chip">{{ .AlgorithmLabel }}</span>
+          {{ if .Enabled }}<span class="badge ok">enabled</span>{{ else }}<span class="badge neutral">disabled</span>{{ end }}
+          {{ if $.IsAdmin }}<span class="chip">owner: {{ .OwnerUsername }}</span>{{ end }}
+        </div>
+        {{ if .Description }}<p class="route-card-description">{{ .Description }}</p>{{ end }}
+      </div>
+      <a class="button-link secondary" href="/admin/routes/{{ .ID }}">Edit Route</a>
+    </div>
+    <div class="route-url-bar">
+      <label class="route-url-label" for="route-url-{{ .ID }}">Public URL</label>
+      <div class="route-url-actions">
+        <input id="route-url-{{ .ID }}" class="route-url-input" value="{{ .PublicURL }}" readonly>
+        <button type="button" class="secondary copy-button" data-copy-text="{{ .PublicURL }}">Copy URL</button>
+      </div>
+    </div>
+    <div class="route-card-meta">
+      <div class="route-meta-block">
+        <span class="route-meta-label">Slug</span>
+        <code>{{ .Slug }}</code>
+      </div>
+      <div class="route-meta-block">
+        <span class="route-meta-label">Instance</span>
+        <div class="inline-cluster">
+          {{ range .InstanceNames }}
+          <span class="chip">{{ . }}</span>
+          {{ else }}
+          <span class="muted">No instance assigned</span>
+          {{ end }}
+        </div>
+      </div>
+      <div class="route-meta-block">
+        <span class="route-meta-label">Surveys</span>
+        <div class="inline-cluster">
+          {{ range .Targets }}
+          <span class="target-pill">#{{ .SurveyID }}{{ if gt .Weight 1 }} <span class="target-weight">w{{ .Weight }}</span>{{ end }}</span>
+          {{ else }}
+          <span class="muted">No surveys configured</span>
+          {{ end }}
+        </div>
+      </div>
+    </div>
+  </article>
+  {{ else }}
+  <div class="empty-state panel">No routes configured yet.</div>
+  {{ end }}
+</div>
+{{ end }}

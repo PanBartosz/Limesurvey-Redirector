@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }}</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand-block">
+        <div class="brand-mark">KR</div>
+        <div>
+          <div class="brand-kicker">LimeSurvey Redirector</div>
+          <h1>{{ if .IsAdmin }}Admin{{ else }}User{{ end }} Console</h1>
+        </div>
+      </div>
+      <nav>
+        <a href="/admin">Dashboard</a>
+        <a href="/admin/routes">Routes</a>
+        <a href="/admin/tutorial" class="active">Tutorial</a>
+        {{ if .IsAdmin }}<a href="/admin/instances">Instances</a>{{ end }}
+        {{ if .IsAdmin }}<a href="/admin/users">Users</a>{{ end }}
+        <form method="post" action="/admin/logout" class="nav-form">
+          <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+          <button type="submit" class="nav-button">Logout</button>
+        </form>
+      </nav>
+    </aside>
+    <main class="workspace">
+      <header class="pagebar">
+        <div>
+          <div class="page-kicker">Tutorial</div>
+          <h2>How to create and use routes</h2>
+          <p>Short bilingual guide for the same core workflow as the old redirector.</p>
+        </div>
+      </header>
+
+      <section class="info-strip">
+        <div>
+          <h3>Old app to new app mapping</h3>
+          <p><code>LimeSurvey version</code> became <code>Instance</code>. <code>Short link</code> became <code>Slug</code>. Pasted survey IDs became structured route targets.</p>
+        </div>
+        <a class="button-link secondary" href="/admin/routes">Open Routes</a>
+      </section>
+
+      <section class="tutorial-grid">
+        <article class="panel tutorial-panel">
+          <div class="panel-header">
+            <div>
+              <h3 class="panel-title">Polski</h3>
+              <div class="panel-subtitle">Krótka instrukcja dla użytkownika tras.</div>
+            </div>
+          </div>
+
+          <div class="tutorial-block">
+            <h4>Szybki workflow</h4>
+            <ol class="step-list">
+              <li>Zaloguj się i otwórz <code>Routes</code>.</li>
+              <li>Wpisz <code>Name</code> i <code>Slug</code>.</li>
+              <li>Wybierz <code>Instance</code>.</li>
+              <li>Dodaj ankiety w sekcji <code>Surveys in this route</code>, po jednej ankiecie w wierszu.</li>
+              <li>Wybierz <code>Algorithm</code>.</li>
+              <li>Jeżeli używasz algorytmu ważonego, ustaw <code>Weight</code> dla każdej ankiety.</li>
+              <li>W razie potrzeby ustaw <code>Fallback URL</code>, przekazywanie parametrów, pending buffer lub stickiness.</li>
+              <li>Kliknij <code>Create Route</code>.</li>
+              <li>Skopiuj <code>Public URL</code> z karty trasy i udostępniaj tylko ten link.</li>
+            </ol>
+          </div>
+
+          <div class="tutorial-block">
+            <h4>Jaki algorytm wybrać</h4>
+            <ul class="plain-list">
+              <li><code>Completed Fuzzy</code>: najlepszy domyślny wybór dla kopii tej samej ankiety.</li>
+              <li><code>Least Completed</code>: najprostsze wyrównywanie po liczbie ukończonych odpowiedzi.</li>
+              <li><code>Weighted Completed</code> / <code>Weighted Fuzzy</code>: używaj tylko wtedy, gdy część ankiet ma dostać więcej ruchu.</li>
+            </ul>
+          </div>
+
+          <div class="tutorial-block">
+            <h4>Na co uważać</h4>
+            <ul class="plain-list">
+              <li>Wszystkie ankiety w trasie powinny być aktywne.</li>
+              <li>Łącz tylko ankiety, które są faktycznie kopiami tego samego badania.</li>
+              <li><code>Slug</code> musi być unikalny.</li>
+              <li>Po zapisaniu zawsze otwórz <code>Public URL</code> testowo.</li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="panel tutorial-panel">
+          <div class="panel-header">
+            <div>
+              <h3 class="panel-title">English</h3>
+              <div class="panel-subtitle">Short route-user guide.</div>
+            </div>
+          </div>
+
+          <div class="tutorial-block">
+            <h4>Quick workflow</h4>
+            <ol class="step-list">
+              <li>Log in and open <code>Routes</code>.</li>
+              <li>Enter <code>Name</code> and <code>Slug</code>.</li>
+              <li>Select the correct <code>Instance</code>.</li>
+              <li>Add surveys in <code>Surveys in this route</code>, one survey per row.</li>
+              <li>Select the <code>Algorithm</code>.</li>
+              <li>If you use a weighted algorithm, set <code>Weight</code> for each survey.</li>
+              <li>If needed, configure <code>Fallback URL</code>, query forwarding, pending buffer, or stickiness.</li>
+              <li>Click <code>Create Route</code>.</li>
+              <li>Copy the <code>Public URL</code> from the route card and share only that link.</li>
+            </ol>
+          </div>
+
+          <div class="tutorial-block">
+            <h4>Which algorithm to start with</h4>
+            <ul class="plain-list">
+              <li><code>Completed Fuzzy</code>: best default for several clones of the same survey.</li>
+              <li><code>Least Completed</code>: simplest balancing by completed response count.</li>
+              <li><code>Weighted Completed</code> / <code>Weighted Fuzzy</code>: use only when some surveys should intentionally receive more traffic.</li>
+            </ul>
+          </div>
+
+          <div class="tutorial-block">
+            <h4>What to double-check</h4>
+            <ul class="plain-list">
+              <li>All surveys in the route should be active.</li>
+              <li>Only group surveys that are actual clones of the same study.</li>
+              <li><code>Slug</code> must be unique.</li>
+              <li>Always smoke-test the <code>Public URL</code> after saving.</li>
+            </ul>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

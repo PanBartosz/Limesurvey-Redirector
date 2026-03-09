@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }}</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand-block">
+        <div class="brand-mark">KR</div>
+        <div>
+          <div class="brand-kicker">LimeSurvey Redirector</div>
+          <h1>Admin Console</h1>
+        </div>
+      </div>
+      <nav>
+        <a href="/admin">Dashboard</a>
+        <a href="/admin/routes">Routes</a>
+        <a href="/admin/tutorial">Tutorial</a>
+        <a href="/admin/instances">Instances</a>
+        <a href="/admin/users" class="active">Users</a>
+        <form method="post" action="/admin/logout" class="nav-form">
+          <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+          <button type="submit" class="nav-button">Logout</button>
+        </form>
+      </nav>
+    </aside>
+    <main class="workspace">
+      <header class="pagebar">
+        <div>
+          <div class="page-kicker">Users</div>
+          <h2>Route users</h2>
+          <p>Database-backed users can create and manage routes but cannot add or configure instances.</p>
+        </div>
+      </header>
+      {{ if .Error }}<div class="notice error">{{ .Error }}</div>{{ end }}
+      <section class="panel-grid">
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <h3 class="panel-title">Configured users</h3>
+              <div class="panel-subtitle">The env-configured admin is not stored here.</div>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr><th>Username</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr>
+              </thead>
+              <tbody>
+                {{ range .Users }}
+                <tr>
+                  <td><code>{{ .Username }}</code></td>
+                  <td><span class="chip">{{ .Role }}</span></td>
+                  <td>{{ if .Enabled }}<span class="badge ok">enabled</span>{{ else }}<span class="badge neutral">disabled</span>{{ end }}</td>
+                  <td>{{ .CreatedAt }}</td>
+                  <td>
+                    <div class="action-stack">
+                      <form method="post" class="inline-form">
+                        <input type="hidden" name="_csrf" value="{{ $.CSRFToken }}">
+                        <input type="hidden" name="action" value="toggle_enabled">
+                        <input type="hidden" name="user_id" value="{{ .ID }}">
+                        <button type="submit" class="secondary">{{ if .Enabled }}Disable{{ else }}Enable{{ end }}</button>
+                      </form>
+                      <form method="post" class="inline-form inline-form-grow">
+                        <input type="hidden" name="_csrf" value="{{ $.CSRFToken }}">
+                        <input type="hidden" name="action" value="reset_password">
+                        <input type="hidden" name="user_id" value="{{ .ID }}">
+                        <input class="compact-input" type="password" name="new_password" placeholder="New password" required>
+                        <button type="submit" class="secondary">Reset Password</button>
+                      </form>
+                      <form method="post" class="inline-form">
+                        <input type="hidden" name="_csrf" value="{{ $.CSRFToken }}">
+                        <input type="hidden" name="action" value="delete">
+                        <input type="hidden" name="user_id" value="{{ .ID }}">
+                        <button type="submit" class="danger">Delete</button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+                {{ else }}
+                <tr><td colspan="5" class="empty-state">No database users configured yet.</td></tr>
+                {{ end }}
+              </tbody>
+            </table>
+          </div>
+        </article>
+        <article class="panel">
+          <div class="panel-header tight">
+            <div>
+              <h3 class="panel-title">Create user</h3>
+              <div class="panel-subtitle">Creates a route-level user account.</div>
+            </div>
+          </div>
+          <form method="post" class="form-grid">
+            <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+            <input type="hidden" name="action" value="create">
+            <div class="form-section">
+              <h4 class="form-section-title">Credentials</h4>
+              <div class="field-grid">
+                <label class="field">
+                  <span>Username</span>
+                  <input name="username" required>
+                </label>
+                <label class="field">
+                  <span>Password</span>
+                  <input type="password" name="password" required>
+                </label>
+              </div>
+            </div>
+            <div class="form-section">
+              <h4 class="form-section-title">Access</h4>
+              <div class="field-help">New users are created with the fixed role <code>user</code>. The env-configured admin username <code>{{ .AdminUsername }}</code> is reserved.</div>
+              <label class="checkbox"><input type="checkbox" name="enabled" checked> Enable user immediately</label>
+            </div>
+            <button type="submit">Create User</button>
+          </form>
+        </article>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

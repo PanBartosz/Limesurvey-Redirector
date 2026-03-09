@@ -1,0 +1,16 @@
+services:
+  redirector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: limesurvey-redirector:e2e
+    pull_policy: never
+    container_name: lsr-e2e-redirector
+  mock-ls:
+    image: python:3.12-alpine
+    working_dir: /workspace
+    command: ["python", "/workspace/e2e/mock_limesurvey.py"]
+    volumes:
+      - .:/workspace:ro
+    ports:
+      - "127.0.0.1:19080:19080"

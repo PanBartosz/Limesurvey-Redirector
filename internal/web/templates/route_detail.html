@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }}</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+  <script defer src="/static/routes.js"></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand-block">
+        <div class="brand-mark">KR</div>
+        <div>
+          <div class="brand-kicker">LimeSurvey Redirector</div>
+          <h1>{{ if .IsAdmin }}Admin{{ else }}User{{ end }} Console</h1>
+        </div>
+      </div>
+      <nav>
+        <a href="/admin">Dashboard</a>
+        <a href="/admin/routes" class="active">Routes</a>
+        <a href="/admin/tutorial">Tutorial</a>
+        {{ if .IsAdmin }}<a href="/admin/instances">Instances</a>{{ end }}
+        {{ if .IsAdmin }}<a href="/admin/users">Users</a>{{ end }}
+        <form method="post" action="/admin/logout" class="nav-form">
+          <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+          <button type="submit" class="nav-button">Logout</button>
+        </form>
+      </nav>
+    </aside>
+    <main class="workspace">
+      <header class="pagebar">
+        <div class="route-meta">
+          <div class="page-kicker">Route</div>
+          <h2>{{ .Route.Name }}</h2>
+          <p>{{ .Route.Description }}</p>
+          <div class="route-path route-path-stack">
+            <code>/r/{{ .Route.Slug }}</code>
+            {{ if .IsAdmin }}<span class="field-help">owner: <code>{{ .Route.OwnerUsername }}</code></span>{{ end }}
+          </div>
+          <div class="route-url-bar route-url-bar-inline">
+            <label class="route-url-label" for="route-detail-url">Public URL</label>
+            <div class="route-url-actions">
+              <input id="route-detail-url" class="route-url-input" value="{{ if .PublicBaseURL }}{{ .PublicBaseURL }}/r/{{ .Route.Slug }}{{ else }}/r/{{ .Route.Slug }}{{ end }}" readonly>
+              <button type="button" class="secondary copy-button" data-copy-text="{{ if .PublicBaseURL }}{{ .PublicBaseURL }}/r/{{ .Route.Slug }}{{ else }}/r/{{ .Route.Slug }}{{ end }}">Copy URL</button>
+            </div>
+          </div>
+        </div>
+        <div class="page-actions">
+          <span class="chip">{{ .Route.Algorithm }}</span>
+          {{ if .Route.Enabled }}<span class="badge ok">enabled</span>{{ else }}<span class="badge neutral">disabled</span>{{ end }}
+          <a class="button-link" href="{{ .SimulationURL }}">Open simulation JSON</a>
+        </div>
+      </header>
+      {{ if .Error }}<div class="notice error">{{ .Error }}</div>{{ end }}
+      <section class="summary-grid">
+        <article class="kpi">
+          <span class="kpi-label">Targets</span>
+          <strong class="kpi-value">{{ len .Route.Targets }}</strong>
+          <span class="kpi-meta">Survey IDs attached to this slug</span>
+        </article>
+        <article class="kpi">
+          <span class="kpi-label">Stickiness</span>
+          <strong class="kpi-value mono">{{ if .Route.StickinessEnabled }}{{ .Route.StickinessMode }}{{ else }}off{{ end }}</strong>
+          <span class="kpi-meta">Current stickiness mode</span>
+        </article>
+        <article class="kpi">
+          <span class="kpi-label">Forwarding</span>
+          <strong class="kpi-value mono">{{ .Route.ForwardQueryMode }}</strong>
+          <span class="kpi-meta">Current query propagation policy</span>
+        </article>
+      </section>
+      <section class="route-grid">
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <h3 class="panel-title">Target pool</h3>
+              <div class="panel-subtitle">Survey candidates for this route.</div>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr><th>Survey</th><th>Instance</th><th>Weight</th><th>Completed</th><th>Full</th><th>Status</th></tr>
+              </thead>
+              <tbody>
+                {{ range .Route.Targets }}
+                <tr>
+                  <td><strong>{{ .SurveyID }}</strong></td>
+                  <td>{{ .Instance.Name }}</td>
+                  <td>{{ .Weight }}</td>
+                  <td>{{ if .Stats }}{{ .Stats.CompletedResponses }}{{ else }}-{{ end }}</td>
+                  <td>{{ if .Stats }}{{ .Stats.FullResponses }}{{ else }}-{{ end }}</td>
+                  <td>{{ if .Stats }}{{ if .Stats.SurveyActive }}<span class="badge ok">active</span>{{ else }}<span class="badge neutral">inactive</span>{{ end }}{{ else }}<span class="badge warn">unknown</span>{{ end }}</td>
+                </tr>
+                {{ end }}
+              </tbody>
+            </table>
+          </div>
+        </article>
+        <article class="panel">
+          <div class="panel-header tight">
+            <div>
+              <h3 class="panel-title">Edit route</h3>
+              <div class="panel-subtitle">Update slug, targets, and algorithm settings.</div>
+            </div>
+          </div>
+          {{ template "route_form" . }}
+          <div class="danger-panel">
+            <div>
+              <h4 class="panel-title">Delete route</h4>
+              <div class="panel-subtitle">Deletes the public slug, targets, stats, and logged decisions for this route.</div>
+            </div>
+            <form method="post" class="inline-form">
+              <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+              <input type="hidden" name="action" value="delete">
+              <button type="submit" class="danger">Delete Route</button>
+            </form>
+          </div>
+        </article>
+      </section>
+      <section class="panel footer-gap">
+        <div class="panel-header">
+          <div>
+            <h3 class="panel-title">Recent decisions</h3>
+            <div class="panel-subtitle">Latest redirect outcomes stored for this route.</div>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr><th>Time</th><th>Status</th><th>Request ID</th><th>Target</th><th>Mode</th></tr>
+            </thead>
+            <tbody>
+              {{ range .RecentDecisions }}
+              <tr>
+                <td>{{ .CreatedAt }}</td>
+                <td>{{ if eq .Status "redirected" }}<span class="badge ok">redirected</span>{{ else if eq .Status "fallback" }}<span class="badge warn">fallback</span>{{ else }}<span class="badge error">failed</span>{{ end }}</td>
+                <td><code>{{ .RequestID }}</code></td>
+                <td>{{ if .RouteTargetID }}{{ .RouteTargetID }}{{ else }}-{{ end }}</td>
+                <td><span class="chip">{{ .DecisionMode }}</span></td>
+              </tr>
+              {{ else }}
+              <tr><td colspan="5" class="empty-state">No decisions logged yet.</td></tr>
+              {{ end }}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

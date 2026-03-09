@@ -1,0 +1,185 @@
+{{ define "route_form" }}
+<form method="post" class="form-grid route-form" data-route-form>
+  <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+  <input type="hidden" name="action" value="{{ if gt .Route.ID 0 }}update{{ else }}create{{ end }}">
+  <div class="form-section">
+    <h4 class="form-section-title">Identity</h4>
+    <div class="field-grid">
+      <label class="field">
+        <span>Name</span>
+        <input name="name" value="{{ .RouteForm.Name }}" required>
+      </label>
+      <label class="field">
+        <span>Slug</span>
+        <input name="slug" value="{{ .RouteForm.Slug }}" placeholder="memory-study" required>
+      </label>
+      <label class="field">
+        <span>Description</span>
+        <textarea name="description" rows="3">{{ .RouteForm.Description }}</textarea>
+      </label>
+    </div>
+  </div>
+
+  <div class="form-section">
+    <h4 class="form-section-title">Target Pool</h4>
+    <div class="field-grid">
+      <label class="field">
+        <span>Instance</span>
+        <select name="instance_id" required>
+          <option value="">Select instance</option>
+          {{ range .Instances }}
+          <option value="{{ .ID }}" {{ if eq (printf "%d" .ID) $.RouteForm.InstanceID }}selected{{ end }}>{{ .Name }} ({{ .RPCTransport }})</option>
+          {{ end }}
+        </select>
+      </label>
+    </div>
+    <div class="target-builder">
+      <div class="target-builder-header">
+        <div>
+          <strong>Surveys in this route</strong>
+          <div class="field-help">One row per survey clone. Weight is only used by weighted algorithms.</div>
+        </div>
+        <button type="button" class="secondary" data-add-target>Add Survey</button>
+      </div>
+      <div class="target-grid-head">
+        <span>Survey ID</span>
+        <span data-weight-heading>Weight</span>
+        <span></span>
+      </div>
+      <div class="target-rows" data-target-rows>
+        {{ range .RouteForm.Targets }}
+        <div class="target-row">
+          <input name="target_survey_id" value="{{ .SurveyID }}" inputmode="numeric" placeholder="123456">
+          <input name="target_weight" value="{{ .Weight }}" inputmode="numeric" placeholder="1" data-target-weight>
+          <button type="button" class="secondary target-remove" data-remove-target>Remove</button>
+        </div>
+        {{ end }}
+      </div>
+      <template data-target-template>
+        <div class="target-row">
+          <input name="target_survey_id" value="" inputmode="numeric" placeholder="123456">
+          <input name="target_weight" value="1" inputmode="numeric" placeholder="1" data-target-weight>
+          <button type="button" class="secondary target-remove" data-remove-target>Remove</button>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <div class="form-section">
+    <h4 class="form-section-title">Decision Logic</h4>
+    <div class="field-grid two">
+      <label class="field">
+        <span>Algorithm</span>
+        <select name="algorithm" data-algorithm-select>
+          {{ range .Algorithms }}
+          <option
+            value="{{ .ID }}"
+            data-needs-fuzzy="{{ .NeedsFuzzyThreshold }}"
+            data-uses-weights="{{ .UsesTargetWeights }}"
+            data-description="{{ .Description }}"
+            data-use-case="{{ .UseCase }}"
+            {{ if eq .ID $.RouteForm.Algorithm }}selected{{ end }}
+          >{{ .Label }}</option>
+          {{ end }}
+        </select>
+      </label>
+      <label class="field" data-fuzzy-field>
+        <span>Fuzzy Threshold</span>
+        <input type="number" name="fuzzy_threshold" value="{{ .RouteForm.FuzzyThreshold }}" min="0">
+      </label>
+    </div>
+    <article class="algorithm-inspector" data-algorithm-inspector>
+      <div class="algorithm-inspector-label">Selected algorithm</div>
+      <strong data-algorithm-label></strong>
+      <p data-algorithm-description></p>
+      <div class="definition-note" data-algorithm-use-case></div>
+    </article>
+    <label class="field">
+      <div class="field-label-row">
+        <span>Fallback URL</span>
+        <details class="help-popover">
+          <summary>?</summary>
+          <div class="help-popover-card">Used only when no survey target is eligible. The app will redirect there and still forward the original query string.</div>
+        </details>
+      </div>
+      <input name="fallback_url" value="{{ .RouteForm.FallbackURL }}" placeholder="https://example.org/fallback">
+    </label>
+    <label class="field">
+      <div class="field-label-row">
+        <span>Forward Query Mode</span>
+        <details class="help-popover">
+          <summary>?</summary>
+          <div class="help-popover-card"><strong>All</strong> keeps every incoming query parameter such as <code>token</code> or campaign IDs. <strong>None</strong> strips them before redirecting.</div>
+        </details>
+      </div>
+      <select name="forward_query_mode">
+        <option value="all" {{ if eq .RouteForm.ForwardQueryMode "all" }}selected{{ end }}>Forward all query parameters</option>
+        <option value="none" {{ if eq .RouteForm.ForwardQueryMode "none" }}selected{{ end }}>Forward none</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="form-section">
+    <h4 class="form-section-title">Optional Controls</h4>
+    <div class="toggle-row">
+      <label class="checkbox">
+        <input type="checkbox" name="pending_enabled" data-pending-toggle {{ if .RouteForm.PendingEnabled }}checked{{ end }}>
+        <span>Enable pending assignment buffer</span>
+      </label>
+      <details class="help-popover">
+        <summary>?</summary>
+        <div class="help-popover-card">Counts recent assignments as temporary load before LimeSurvey marks them completed. <strong>TTL</strong> controls how long they count. <strong>Weight</strong> controls how strongly they affect balancing.</div>
+      </details>
+    </div>
+    <div class="field-grid two" data-pending-fields>
+      <label class="field">
+        <span>Pending TTL Seconds</span>
+        <input type="number" name="pending_ttl_seconds" value="{{ .RouteForm.PendingTTLSeconds }}" min="60">
+      </label>
+      <label class="field">
+        <span>Pending Weight</span>
+        <input type="number" step="0.1" name="pending_weight" value="{{ .RouteForm.PendingWeight }}">
+      </label>
+    </div>
+    <div class="toggle-row">
+      <label class="checkbox">
+        <input type="checkbox" name="stickiness_enabled" data-stickiness-toggle {{ if .RouteForm.StickinessEnabled }}checked{{ end }}>
+        <span>Enable stickiness for this route</span>
+      </label>
+      <details class="help-popover">
+        <summary>?</summary>
+        <div class="help-popover-card">Stickiness tries to send the same respondent back to the same target survey if they reopen the route. Leave it off unless you specifically need that behavior.</div>
+      </details>
+    </div>
+    <div class="field-grid two" data-stickiness-fields>
+      <label class="field">
+        <div class="field-label-row">
+          <span>Stickiness Mode</span>
+          <details class="help-popover">
+            <summary>?</summary>
+            <div class="help-popover-card"><strong>Cookie</strong> remembers the browser. <strong>Query parameter</strong> uses a stable parameter like <code>token</code> so the same respondent stays mapped across visits.</div>
+          </details>
+        </div>
+        <select name="stickiness_mode" data-stickiness-mode>
+          <option value="" {{ if eq .RouteForm.StickinessMode "" }}selected{{ end }}>Off</option>
+          <option value="cookie" {{ if eq .RouteForm.StickinessMode "cookie" }}selected{{ end }}>Cookie</option>
+          <option value="query_param" {{ if eq .RouteForm.StickinessMode "query_param" }}selected{{ end }}>Query parameter</option>
+        </select>
+      </label>
+      <label class="field" data-stickiness-param-field>
+        <span>Stickiness Query Param</span>
+        <input name="stickiness_param" value="{{ .RouteForm.StickinessParam }}" placeholder="token">
+      </label>
+    </div>
+    <label class="checkbox">
+      <input type="checkbox" name="enabled" {{ if .RouteForm.Enabled }}checked{{ end }}>
+      <span>{{ if gt .Route.ID 0 }}Enable route{{ else }}Enable route immediately{{ end }}</span>
+    </label>
+  </div>
+
+  <div class="button-row">
+    <button type="submit">{{ if gt .Route.ID 0 }}Save Route{{ else }}Create Route{{ end }}</button>
+    {{ if gt .Route.ID 0 }}<a class="button-link secondary" href="/admin/routes">Back to Routes</a>{{ end }}
+  </div>
+</form>
+{{ end }}

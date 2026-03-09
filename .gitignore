@@ -1,0 +1,13 @@
+.env
+.env.local
+.DS_Store
+
+data/
+output/
+*.db
+*.sqlite
+*.sqlite3
+
+e2e/.runner/
+node_modules/
+coverage.out

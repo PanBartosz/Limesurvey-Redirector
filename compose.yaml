@@ -1,0 +1,24 @@
+services:
+  redirector:
+    image: ghcr.io/panbartosz/limesurvey-redirector:${IMAGE_TAG:-latest}
+    pull_policy: always
+    restart: unless-stopped
+    environment:
+      APP_ADDR: ":8099"
+      DATABASE_PATH: /app/data/redirector.db
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in your env file or Portainer stack vars}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in your env file or Portainer stack vars}
+      SESSION_SECURE_COOKIE: ${SESSION_SECURE_COOKIE:-false}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://127.0.0.1:${HOST_PORT:-18099}}
+      STATS_TTL_SECONDS: ${STATS_TTL_SECONDS:-10}
+      REQUEST_TIMEOUT_SECONDS: ${REQUEST_TIMEOUT_SECONDS:-15}
+      LS3_RPC_PASSWORD: ${LS3_RPC_PASSWORD:-}
+      LS6_RPC_PASSWORD: ${LS6_RPC_PASSWORD:-}
+    ports:
+      - "${HOST_BIND:-127.0.0.1}:${HOST_PORT:-18099}:8099"
+    volumes:
+      - redirector_data:/app/data
+
+volumes:
+  redirector_data:

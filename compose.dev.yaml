@@ -1,0 +1,7 @@
+services:
+  redirector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: limesurvey-redirector:dev
+    pull_policy: never
