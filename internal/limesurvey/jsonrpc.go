@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 )
@@ -47,16 +48,19 @@ func (c *jsonClient) call(ctx context.Context, method string, params []any, out 
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	httpClient := &http.Client{Timeout: c.httpTimeout + 2*time.Second}
-	resp, err := httpClient.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s request failed: %w", method, err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("%s returned HTTP %d", method, resp.StatusCode)
+	}
 
 	var rpcResponse jsonRPCResponse
-	if err := json.NewDecoder(resp.Body).Decode(&rpcResponse); err != nil {
-		return err
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&rpcResponse); err != nil {
+		return fmt.Errorf("%s returned invalid JSON: %w", method, err)
 	}
 	if rpcResponse.Error != nil {
 		return fmt.Errorf("json-rpc error %d: %s", rpcResponse.Error.Code, rpcResponse.Error.Message)
@@ -89,7 +93,12 @@ func (c *jsonClient) getSessionKey(ctx context.Context) (string, error) {
 	return "", fmt.Errorf("empty JSON-RPC session key")
 }
 
-func (c *jsonClient) releaseSessionKey(ctx context.Context, sessionKey string) {
-	var ignored any
-	_ = c.call(ctx, "release_session_key", []any{sessionKey}, &ignored)
+func (c *jsonClient) releaseSessionKey(sessionKey string) {
+	go func() {
+		cleanupTimeout := minDuration(c.httpTimeout, 2*time.Second)
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+		defer cancel()
+		var ignored any
+		_ = c.call(cleanupCtx, "release_session_key", []any{sessionKey}, &ignored)
+	}()
 }

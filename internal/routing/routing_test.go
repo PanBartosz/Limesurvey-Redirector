@@ -44,3 +44,28 @@ func TestDisabledOrInactiveCandidatesAreExcluded(t *testing.T) {
 		t.Fatal("expected no eligible targets error")
 	}
 }
+
+func TestRecentStaleStatsRemainEligible(t *testing.T) {
+	route := models.Route{Algorithm: "least_completed"}
+	result, err := Select(route, []Candidate{{
+		Target: models.RouteTarget{
+			ID:       1,
+			SurveyID: 101,
+			Enabled:  true,
+			Instance: models.Instance{Enabled: true},
+		},
+		CompletedResponses: 7,
+		SurveyActive:       true,
+		StatsStale:         true,
+		StatsWarning:       "using cached stats after refresh failed",
+	}})
+	if err != nil {
+		t.Fatalf("expected stale candidate to remain eligible: %v", err)
+	}
+	if result.Chosen == nil || result.Chosen.Target.SurveyID != 101 {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+	if len(result.Snapshot) != 1 || !result.Snapshot[0].Stale {
+		t.Fatalf("expected stale marker in snapshot: %+v", result.Snapshot)
+	}
+}

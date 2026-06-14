@@ -95,6 +95,8 @@ type simulationCandidate struct {
 	PendingAssignments  int                    `json:"pending_assignments"`
 	SurveyActive        bool                   `json:"survey_active"`
 	FetchError          string                 `json:"fetch_error,omitempty"`
+	StatsStale          bool                   `json:"stats_stale,omitempty"`
+	StatsWarning        string                 `json:"stats_warning,omitempty"`
 }
 
 func newCSRFProtector(secret string, secureCookies bool) *csrfProtector {
@@ -357,6 +359,8 @@ func buildSimulationResponse(route models.Route, candidates []routing.Candidate,
 			PendingAssignments:  candidate.PendingAssignments,
 			SurveyActive:        candidate.SurveyActive,
 			FetchError:          candidate.FetchError,
+			StatsStale:          candidate.StatsStale,
+			StatsWarning:        candidate.StatsWarning,
 		})
 	}
 	if runErr != nil {

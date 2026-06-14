@@ -28,6 +28,8 @@ type Candidate struct {
 	PendingAssignments  int
 	SurveyActive        bool
 	FetchError          string
+	StatsStale          bool
+	StatsWarning        string
 }
 
 type ScoredCandidate struct {
@@ -40,6 +42,8 @@ type ScoredCandidate struct {
 	Full      int     `json:"full"`
 	Pending   int     `json:"pending"`
 	Weight    int     `json:"weight"`
+	Stale     bool    `json:"stale"`
+	Warning   string  `json:"warning,omitempty"`
 }
 
 type Result struct {
@@ -86,6 +90,8 @@ func Select(route models.Route, candidates []Candidate) (Result, error) {
 			Full:      candidate.FullResponses,
 			Pending:   candidate.PendingAssignments,
 			Weight:    maxInt(candidate.Target.Weight, 1),
+			Stale:     candidate.StatsStale,
+			Warning:   candidate.StatsWarning,
 		})
 		if isEligible {
 			eligible = append(eligible, candidate)

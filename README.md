@@ -53,10 +53,29 @@ Common optional settings:
 - `INSTANCE_CREDENTIALS_KEY` encryption key for stored LimeSurvey instance passwords; if unset, the app falls back to `SESSION_SECRET`
 - `SESSION_SECURE_COOKIE` default `false`, set `true` behind HTTPS
 - `PUBLIC_BASE_URL` public URL of the app, used to display full route URLs
-- `STATS_TTL_SECONDS` default `10`
-- `REQUEST_TIMEOUT_SECONDS` default `15`
+- `STATS_TTL_SECONDS` default `10`; fresh survey stats are reused for this period
+- `STALE_STATS_MAX_AGE_SECONDS` default `300`; recent cached stats may be used when LimeSurvey is temporarily unavailable
+- `REQUEST_TIMEOUT_SECONDS` default `15`; maximum duration of the entire routing stats refresh, not each individual RPC call
 - `HOST_BIND` default `127.0.0.1`
 - `HOST_PORT` default `18099`
+
+## RPC Failure Handling
+
+Survey stats are fetched only when a public route is opened or a route simulation is requested. The app does not continuously poll LimeSurvey.
+
+For each routing decision:
+
+- all target surveys are refreshed concurrently
+- the entire refresh is bounded by `REQUEST_TIMEOUT_SECONDS`
+- JSON-RPC and XML-RPC HTTP requests inherit that deadline
+- session cleanup runs asynchronously and does not delay the respondent redirect
+- repeated requests for the same survey share one in-flight refresh
+- successful results are cached for `STATS_TTL_SECONDS`
+- if a refresh fails, cached stats up to `STALE_STATS_MAX_AGE_SECONDS` old remain eligible
+- if one target fails but another succeeds, the healthy target can still be selected
+- if every target fails and no usable cache exists, the route uses its configured fallback URL or returns HTTP `503`
+
+Timeouts and stale-cache use are recorded in route decision diagnostics.
 
 ## Local Run
 
@@ -143,6 +162,7 @@ INSTANCE_CREDENTIALS_KEY=replace-with-a-separate-32-char-minimum-encryption-key
 SESSION_SECURE_COOKIE=true
 PUBLIC_BASE_URL=https://redirector.your-domain.example
 STATS_TTL_SECONDS=10
+STALE_STATS_MAX_AGE_SECONDS=300
 REQUEST_TIMEOUT_SECONDS=15
 ```
 

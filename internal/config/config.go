@@ -18,6 +18,7 @@ type Config struct {
 	SecureCookies          bool
 	PublicBaseURL          string
 	StatsTTL               time.Duration
+	StaleStatsMaxAge       time.Duration
 	RequestTimeout         time.Duration
 }
 
@@ -34,6 +35,7 @@ func Load() (Config, error) {
 		SecureCookies:          envBoolOrDefault("SESSION_SECURE_COOKIE", strings.HasPrefix(strings.ToLower(publicBaseURL), "https://")),
 		PublicBaseURL:          publicBaseURL,
 		StatsTTL:               time.Duration(envIntOrDefault("STATS_TTL_SECONDS", 10)) * time.Second,
+		StaleStatsMaxAge:       time.Duration(envIntOrDefault("STALE_STATS_MAX_AGE_SECONDS", 300)) * time.Second,
 		RequestTimeout:         time.Duration(envIntOrDefault("REQUEST_TIMEOUT_SECONDS", 15)) * time.Second,
 	}
 
@@ -48,6 +50,15 @@ func Load() (Config, error) {
 	}
 	if len(cfg.InstanceCredentialsKey) < 32 {
 		return Config{}, fmt.Errorf("INSTANCE_CREDENTIALS_KEY must be at least 32 characters")
+	}
+	if cfg.StatsTTL < 0 {
+		return Config{}, fmt.Errorf("STATS_TTL_SECONDS must not be negative")
+	}
+	if cfg.StaleStatsMaxAge < cfg.StatsTTL {
+		return Config{}, fmt.Errorf("STALE_STATS_MAX_AGE_SECONDS must be at least STATS_TTL_SECONDS")
+	}
+	if cfg.RequestTimeout < time.Second || cfg.RequestTimeout > 2*time.Minute {
+		return Config{}, fmt.Errorf("REQUEST_TIMEOUT_SECONDS must be between 1 and 120")
 	}
 
 	return cfg, nil

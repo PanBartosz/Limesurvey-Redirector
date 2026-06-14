@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,11 +18,13 @@ import (
 )
 
 type Service struct {
-	statsTTL        time.Duration
-	requestTimeout  time.Duration
-	instanceSecrets *credentials.Protector
-	mu              sync.Mutex
-	cache           map[string]cachedState
+	statsTTL         time.Duration
+	staleStatsMaxAge time.Duration
+	requestTimeout   time.Duration
+	instanceSecrets  *credentials.Protector
+	mu               sync.Mutex
+	cache            map[string]cachedState
+	inflight         map[string]*stateLoad
 }
 
 type Summary struct {
@@ -31,8 +34,10 @@ type Summary struct {
 }
 
 type SurveyState struct {
-	Summary Summary
-	Active  bool
+	Summary      Summary
+	Active       bool
+	Stale        bool
+	FetchWarning string
 }
 
 type SurveyOverview struct {
@@ -46,12 +51,20 @@ type cachedState struct {
 	fetched time.Time
 }
 
-func NewService(statsTTL, requestTimeout time.Duration, instanceSecrets *credentials.Protector) *Service {
+type stateLoad struct {
+	state SurveyState
+	err   error
+	done  chan struct{}
+}
+
+func NewService(statsTTL, staleStatsMaxAge, requestTimeout time.Duration, instanceSecrets *credentials.Protector) *Service {
 	return &Service{
-		statsTTL:        statsTTL,
-		requestTimeout:  requestTimeout,
-		instanceSecrets: instanceSecrets,
-		cache:           map[string]cachedState{},
+		statsTTL:         statsTTL,
+		staleStatsMaxAge: staleStatsMaxAge,
+		requestTimeout:   requestTimeout,
+		instanceSecrets:  instanceSecrets,
+		cache:            map[string]cachedState{},
+		inflight:         map[string]*stateLoad{},
 	}
 }
 
@@ -64,46 +77,95 @@ func (s *Service) ListSurveys(ctx context.Context, instance models.Instance) ([]
 }
 
 func (s *Service) BuildCandidates(ctx context.Context, route models.Route) ([]routing.Candidate, error) {
-	candidates := make([]routing.Candidate, 0, len(route.Targets))
-	for _, target := range route.Targets {
-		state, err := s.GetSurveyState(ctx, target.Instance, target.SurveyID)
-		candidate := routing.Candidate{Target: target}
-		if err != nil {
-			candidate.FetchError = err.Error()
-			candidates = append(candidates, candidate)
-			continue
-		}
-		candidate.CompletedResponses = state.Summary.CompletedResponses
-		candidate.IncompleteResponses = state.Summary.IncompleteResponses
-		candidate.FullResponses = state.Summary.FullResponses
-		candidate.SurveyActive = state.Active
-		candidates = append(candidates, candidate)
+	ctx, cancel := context.WithTimeout(ctx, s.requestTimeout)
+	defer cancel()
+
+	candidates := make([]routing.Candidate, len(route.Targets))
+	var wg sync.WaitGroup
+	for i, target := range route.Targets {
+		wg.Add(1)
+		go func(index int, target models.RouteTarget) {
+			defer wg.Done()
+			state, err := s.GetSurveyState(ctx, target.Instance, target.SurveyID)
+			candidate := routing.Candidate{Target: target}
+			if err != nil {
+				candidate.FetchError = err.Error()
+				candidates[index] = candidate
+				return
+			}
+			candidate.CompletedResponses = state.Summary.CompletedResponses
+			candidate.IncompleteResponses = state.Summary.IncompleteResponses
+			candidate.FullResponses = state.Summary.FullResponses
+			candidate.SurveyActive = state.Active
+			candidate.StatsStale = state.Stale
+			candidate.StatsWarning = state.FetchWarning
+			candidates[index] = candidate
+		}(i, target)
 	}
+	wg.Wait()
 	return candidates, nil
 }
 
 func (s *Service) GetSurveyState(ctx context.Context, instance models.Instance, surveyID int64) (SurveyState, error) {
 	key := fmt.Sprintf("%d:%d", instance.ID, surveyID)
+	now := time.Now()
+
 	s.mu.Lock()
-	cached, ok := s.cache[key]
-	s.mu.Unlock()
-	if ok && time.Since(cached.fetched) < s.statsTTL {
+	cached, cachedOK := s.cache[key]
+	if cachedOK && now.Sub(cached.fetched) < s.statsTTL {
+		s.mu.Unlock()
 		return cached.state, nil
 	}
+	load, loading := s.inflight[key]
+	if !loading {
+		load = &stateLoad{done: make(chan struct{})}
+		s.inflight[key] = load
+		go s.loadSurveyState(key, instance, surveyID, load)
+	}
+	s.mu.Unlock()
+
+	select {
+	case <-load.done:
+		if load.err == nil {
+			return load.state, nil
+		}
+		return s.staleStateOrError(cached, cachedOK, load.err)
+	case <-ctx.Done():
+		return s.staleStateOrError(cached, cachedOK, ctx.Err())
+	}
+}
+
+func (s *Service) loadSurveyState(key string, instance models.Instance, surveyID int64, load *stateLoad) {
+	ctx, cancel := context.WithTimeout(context.Background(), s.requestTimeout)
+	defer cancel()
 
 	client, err := s.newClient(instance)
-	if err != nil {
-		return SurveyState{}, err
-	}
-	state, err := client.GetSurveyState(ctx, surveyID)
-	if err != nil {
-		return SurveyState{}, err
+	var state SurveyState
+	if err == nil {
+		state, err = client.GetSurveyState(ctx, surveyID)
 	}
 
 	s.mu.Lock()
-	s.cache[key] = cachedState{state: state, fetched: time.Now()}
+	if err == nil {
+		state.Stale = false
+		state.FetchWarning = ""
+		s.cache[key] = cachedState{state: state, fetched: time.Now()}
+	}
+	load.state = state
+	load.err = err
+	delete(s.inflight, key)
+	close(load.done)
 	s.mu.Unlock()
-	return state, nil
+}
+
+func (s *Service) staleStateOrError(cached cachedState, ok bool, fetchErr error) (SurveyState, error) {
+	if ok && s.staleStatsMaxAge > 0 && time.Since(cached.fetched) <= s.staleStatsMaxAge {
+		state := cached.state
+		state.Stale = true
+		state.FetchWarning = fmt.Sprintf("using cached stats after refresh failed: %v", fetchErr)
+		return state, nil
+	}
+	return SurveyState{}, fetchErr
 }
 
 func SnapshotJSON(candidates []routing.Candidate) string {
@@ -118,6 +180,8 @@ func SnapshotJSON(candidates []routing.Candidate) string {
 		PendingAssignments  int    `json:"pending_assignments"`
 		SurveyActive        bool   `json:"survey_active"`
 		FetchError          string `json:"fetch_error,omitempty"`
+		StatsStale          bool   `json:"stats_stale,omitempty"`
+		StatsWarning        string `json:"stats_warning,omitempty"`
 	}
 
 	snapshot := make([]snapshotCandidate, 0, len(candidates))
@@ -133,6 +197,8 @@ func SnapshotJSON(candidates []routing.Candidate) string {
 			PendingAssignments:  candidate.PendingAssignments,
 			SurveyActive:        candidate.SurveyActive,
 			FetchError:          candidate.FetchError,
+			StatsStale:          candidate.StatsStale,
+			StatsWarning:        candidate.StatsWarning,
 		})
 	}
 
@@ -160,6 +226,7 @@ func (s *Service) newClient(instance models.Instance) (client, error) {
 			remoteControlURL: instance.RemoteControlURL,
 			username:         instance.Username,
 			password:         password,
+			requestTimeout:   s.requestTimeout,
 		}, nil
 	case models.RPCTransportJSON:
 		return &jsonClient{
@@ -167,6 +234,7 @@ func (s *Service) newClient(instance models.Instance) (client, error) {
 			username:         instance.Username,
 			password:         password,
 			httpTimeout:      s.requestTimeout,
+			httpClient:       &http.Client{Timeout: s.requestTimeout},
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported transport %q", instance.RPCTransport)
@@ -191,6 +259,7 @@ type xmlClient struct {
 	remoteControlURL string
 	username         string
 	password         string
+	requestTimeout   time.Duration
 }
 
 type sessionResponse struct {
@@ -210,10 +279,11 @@ type jsonClient struct {
 	username         string
 	password         string
 	httpTimeout      time.Duration
+	httpClient       *http.Client
 }
 
 func (c *xmlClient) ListSurveys(ctx context.Context) ([]SurveyOverview, error) {
-	client, err := xmlrpc.NewClient(c.remoteControlURL)
+	client, err := c.newRPCClient(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +291,7 @@ func (c *xmlClient) ListSurveys(ctx context.Context) ([]SurveyOverview, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer c.releaseSessionKey(client, sessionKey)
+	defer c.releaseSessionKey(sessionKey)
 
 	var raw any
 	if err := client.Call("list_surveys", []any{sessionKey}, &raw); err != nil {
@@ -231,7 +301,7 @@ func (c *xmlClient) ListSurveys(ctx context.Context) ([]SurveyOverview, error) {
 }
 
 func (c *xmlClient) GetSurveyState(ctx context.Context, surveyID int64) (SurveyState, error) {
-	client, err := xmlrpc.NewClient(c.remoteControlURL)
+	client, err := c.newRPCClient(ctx)
 	if err != nil {
 		return SurveyState{}, err
 	}
@@ -239,7 +309,7 @@ func (c *xmlClient) GetSurveyState(ctx context.Context, surveyID int64) (SurveyS
 	if err != nil {
 		return SurveyState{}, err
 	}
-	defer c.releaseSessionKey(client, sessionKey)
+	defer c.releaseSessionKey(sessionKey)
 
 	var summary any
 	if err := client.Call("get_summary", []any{sessionKey, int(surveyID), "all"}, &summary); err != nil {
@@ -267,9 +337,38 @@ func (c *xmlClient) getSessionKey(client *xmlrpc.Client) (string, error) {
 	return "", fmt.Errorf("empty XML-RPC session key")
 }
 
-func (c *xmlClient) releaseSessionKey(client *xmlrpc.Client, sessionKey string) {
-	var ignored any
-	_ = client.Call("release_session_key", []any{sessionKey}, &ignored)
+func (c *xmlClient) releaseSessionKey(sessionKey string) {
+	go func() {
+		cleanupTimeout := minDuration(c.requestTimeout, 2*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+		defer cancel()
+		client, err := c.newRPCClient(ctx)
+		if err != nil {
+			return
+		}
+		var ignored any
+		_ = client.Call("release_session_key", []any{sessionKey}, &ignored)
+	}()
+}
+
+func (c *xmlClient) newRPCClient(ctx context.Context) (*xmlrpc.Client, error) {
+	httpClient := &http.Client{
+		Timeout: c.requestTimeout,
+		Transport: requestContextTransport{
+			ctx:  ctx,
+			base: http.DefaultTransport,
+		},
+	}
+	return xmlrpc.NewClient(c.remoteControlURL, xmlrpc.HttpClient(httpClient))
+}
+
+type requestContextTransport struct {
+	ctx  context.Context
+	base http.RoundTripper
+}
+
+func (t requestContextTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return t.base.RoundTrip(req.Clone(t.ctx))
 }
 
 func (c *jsonClient) ListSurveys(ctx context.Context) ([]SurveyOverview, error) {
@@ -277,7 +376,7 @@ func (c *jsonClient) ListSurveys(ctx context.Context) ([]SurveyOverview, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer c.releaseSessionKey(ctx, sessionKey)
+	defer c.releaseSessionKey(sessionKey)
 
 	var response any
 	if err := c.call(ctx, "list_surveys", []any{sessionKey}, &response); err != nil {
@@ -291,7 +390,7 @@ func (c *jsonClient) GetSurveyState(ctx context.Context, surveyID int64) (Survey
 	if err != nil {
 		return SurveyState{}, err
 	}
-	defer c.releaseSessionKey(ctx, sessionKey)
+	defer c.releaseSessionKey(sessionKey)
 
 	var summary any
 	if err := c.call(ctx, "get_summary", []any{sessionKey, surveyID, "all"}, &summary); err != nil {
@@ -317,6 +416,13 @@ func parseSessionKey(raw any) string {
 	default:
 		return ""
 	}
+}
+
+func minDuration(a, b time.Duration) time.Duration {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func parseSurveyList(raw any) []SurveyOverview {

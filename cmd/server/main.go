@@ -38,7 +38,7 @@ func main() {
 		log.Fatal(err)
 	}
 	authManager := auth.New(cfg.AdminUsername, cfg.AdminPassword, cfg.SessionSecret, cfg.SecureCookies)
-	lsService := limesurvey.NewService(cfg.StatsTTL, cfg.RequestTimeout, instanceSecrets)
+	lsService := limesurvey.NewService(cfg.StatsTTL, cfg.StaleStatsMaxAge, cfg.RequestTimeout, instanceSecrets)
 	server, err := web.NewServer(cfg, st, authManager, lsService, instanceSecrets)
 	if err != nil {
 		log.Fatal(err)
@@ -48,6 +48,9 @@ func main() {
 		Addr:              cfg.Addr,
 		Handler:           server.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      cfg.RequestTimeout + 5*time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	shutdownCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

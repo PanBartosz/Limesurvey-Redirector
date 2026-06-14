@@ -719,13 +719,22 @@ func (s *Server) evaluateRoute(ctx context.Context, route models.Route) (routing
 		return routing.Result{}, nil, err
 	}
 	for _, candidate := range candidates {
+		fetchStatus := candidate.FetchError
+		if fetchStatus == "" {
+			fetchStatus = candidate.StatsWarning
+		}
+		if candidate.FetchError != "" {
+			log.Printf("route %d target %d survey %d stats refresh failed: %s", route.ID, candidate.Target.ID, candidate.Target.SurveyID, candidate.FetchError)
+		} else if candidate.StatsStale {
+			log.Printf("route %d target %d survey %d using stale stats: %s", route.ID, candidate.Target.ID, candidate.Target.SurveyID, candidate.StatsWarning)
+		}
 		stats := models.TargetStats{
 			RouteTargetID:       candidate.Target.ID,
 			CompletedResponses:  candidate.CompletedResponses,
 			IncompleteResponses: candidate.IncompleteResponses,
 			FullResponses:       candidate.FullResponses,
 			SurveyActive:        candidate.SurveyActive,
-			FetchError:          candidate.FetchError,
+			FetchError:          fetchStatus,
 			FetchedAt:           time.Now().UTC(),
 		}
 		if err := s.store.UpsertTargetStats(ctx, candidate.Target.ID, stats); err != nil {
